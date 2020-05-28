@@ -7,62 +7,78 @@ from pymediainfo import MediaInfo
 import stat
 import subprocess
 import xml.etree.ElementTree as ET
+import re
+import sys
+import hashlib
+import argparse
 
-curr_dir = os.path.dirname(os.path.realpath(__file__))
-print(f'curr_dir: {curr_dir}')
 
-wb = Workbook()
-ws = wb.active
-ws.title = 'videos'
-video_file_extensions = ['.mkv', '.mp4', '.m4p', '.m4v', '.avi', '.webm', '.flv', '.vob',
-                         '.ogv', '.ogg', '.gif', '.mov', '.wmv', '.mpg', '.mpeg', '.3gp', ]
-ws.append(['type', 'dir', 'video file', 'user', 'group', 'size', 'mode', 'width', 'height', 'frame rate', 'codec', 'encoded lib name'])
-found_video_files = {}
-# for dirpath, dirnames, filenames in os.walk(Path(curr_dir, 'movies')):
-for dirpath, dirnames, filenames in os.walk(curr_dir):
-    video_files = filenames  # [f for f in filenames if f[f.rfind('.'):].lower() in video_file_extensions]
-    vd = Path(dirpath)
-    st = vd.stat()
-    permission = st.st_mode
-    vd_mode = permission & 0o777
-    dir_type = permission & 0o777000
-    vd_uid = vd.owner()  # pwd.getpwuid(st.st_uid)
-    vd_gid = vd.group()  # grp.getgrgid(st.st_gid)
-    ws.append(['d', str(Path(dirpath).relative_to(curr_dir)), str(Path(dirpath).relative_to(curr_dir)), vd_uid, vd_gid, '', f'{vd_mode:o}'])
-    for video_file in video_files:
-        # tmp = []
-        # vf = os.path.join(dirpath, video_file)
-        vf = Path(dirpath, video_file)
-        file_size = os.path.getsize(vf)
-        st = vf.stat()
-        permission = st.st_mode
-        mode = permission & 0o777
-        file_type = permission & 0o777000
-        uid = vf.owner()  # pwd.getpwuid(st.st_uid)
-        gid = vf.group()  # grp.getgrgid(st.st_gid)
-        # print(f'owner: {uid} - group: {gid} - file_type: {file_type:o} - mode: {mode:o} - video_file: {vf}')
-        tmp = ['f', str(Path(dirpath).relative_to(curr_dir)), video_file, uid, gid, file_size, f'{mode:o}']
+def validate_dir(text):
+    path = Path(text).expanduser()
+    if not path.exists():
+        raise argparse.ArgumentTypeError(f"The path \"{path}\" does not exist!")
+    return path
 
-        # video_file_info = {'dirpath': dirpath, 'file': video_file, 'file_type': file_type, 'file_mode': mode, }
-        media_info = MediaInfo.parse(vf)
-        for track in media_info.tracks:
-            # print(track.track_type)
-            if track.track_type == 'Video':
-                tmp += [track.width, track.height, track.frame_rate, track.codec, track.encoded_library_name]
-        ws.append(tmp)
 
-        # o = subprocess.check_output(['mediainfo', '--Output=XML', vf])
-        # # tree = ET.parse('country_data.xml')
-        # # root = tree.getroot()
-        # root = ET.fromstring(o.encode('utf-8'))
-        # for child in root:
-        #     print(child.tag, child.attrib)
-        # for neighbor in root.iter():
-        #     print(neighbor.attrib)
-        # # media = root.find('media')
-        # # print(f'media: {media}')
-        # # for c in media.findall('track'):
-        # #     print('found')
-        # #     print(c.get('type'))
+def parse_cli_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("path", help="Directory of video files.", type=validate_dir)
+    parser.add_argument("--name", default="videos", help="name of output excel file.", type=str)
+    # parser.add_argument("-v", "--verbose", help="verbose output.", action="store_true")
 
-wb.save(Path(curr_dir, 'test.xlsx'))
+    return parser.parse_args()
+
+
+def main():
+    args = parse_cli_args()
+
+    path = Path(args.path).absolute()
+    print(f"Video Directory: '{path}'")
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'videos'
+    video_file_extensions = ['.mkv', '.mp4', '.m4p', '.m4v', '.avi', '.webm', '.flv', '.vob',
+                             '.ogv', '.ogg', '.gif', '.mov', '.wmv', '.mpg', '.mpeg', '.3gp', ]
+
+    ws.append(['type', 'dir', 'video file', 'ext', 'is web-dl', 'user', 'group', 'size', 'mode', 'width', 'height', 'frame rate', 'codec', 'encoded lib name', 'audio format', 'audio channels', 'audio bit rate', 'audio sampling rate', 'audio language'])
+    for dirpath, dirnames, filenames in os.walk(path):
+        dirpath = Path(dirpath)
+        video_files = filenames  # [f for f in filenames if f[f.rfind('.'):].lower() in video_file_extensions]
+        vid_dir = Path(dirpath)
+        vid_dir_st = vid_dir.stat()
+        permission = vid_dir_st.st_mode
+        vd_mode = permission & 0o777
+        dir_type = permission & 0o777000
+        vid_dir_uid = vid_dir.owner()
+        vid_dir_gid = vid_dir.group()
+        ws.append(['d', str(dirpath.relative_to(path)), str(dirpath.relative_to(path)), '', '', vid_dir_uid, vid_dir_gid, '', f'{vd_mode:o}'])
+        for video_file in video_files:
+            vf = dirpath / video_file
+            st = vf.stat()
+            file_size = st.st_size
+            permission = st.st_mode
+            mode = permission & 0o777
+            file_type = permission & 0o777000
+            uid = vf.owner()
+            gid = vf.group()
+            tmp = ['f', str(dirpath.relative_to(path)), video_file, vf.suffix, 'X' if 'web-dl' in video_file.lower() else '', uid, gid, file_size, f'{mode:o}']
+
+            media_info = MediaInfo.parse(vf)
+            for track in media_info.tracks:
+                if track.track_type == 'Video':
+                    tmp += [track.width, track.height, track.frame_rate, track.codec, track.encoded_library_name]
+                elif track.track_type == 'Audio':
+                    tmp += [track.format, track.channel_s, track.bit_rate, track.sampling_rate, track.language]
+            ws.append(tmp)
+
+    wb.save(path / f'{args.name.strip()}.xlsx')
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception as e:
+        print(e)
+        sys.exit(1)
