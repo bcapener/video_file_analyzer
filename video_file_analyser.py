@@ -1,16 +1,11 @@
+#! /usr/bin/env python3
+
 import os
-import pwd
-import grp
+import sys
+import argparse
 from pathlib import Path
 from openpyxl import Workbook
 from pymediainfo import MediaInfo
-import stat
-import subprocess
-import xml.etree.ElementTree as ET
-import re
-import sys
-import hashlib
-import argparse
 
 
 def validate_dir(text):
@@ -27,6 +22,11 @@ def parse_cli_args():
     # parser.add_argument("-v", "--verbose", help="verbose output.", action="store_true")
 
     return parser.parse_args()
+
+
+def is_web(name):
+    name = name.lower()
+    return 'web-dl' in name or 'webrip' in name or '.web.' in name
 
 
 def main():
@@ -62,7 +62,7 @@ def main():
             file_type = permission & 0o777000
             uid = vf.owner()
             gid = vf.group()
-            tmp = ['f', str(dirpath.relative_to(path)), video_file, vf.suffix, 'X' if 'web-dl' in video_file.lower() else '', uid, gid, file_size, f'{mode:o}']
+            tmp = ['f', str(dirpath.relative_to(path)), video_file, vf.suffix, 'X' if is_web(video_file) else '', uid, gid, file_size, f'{mode:o}']
 
             media_info = MediaInfo.parse(vf)
             for track in media_info.tracks:
