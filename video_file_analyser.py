@@ -34,6 +34,8 @@ def main():
 
     path = Path(args.path).absolute()
     print(f"Video Directory: '{path}'")
+    output_filename = f'{args.name.strip()}.xlsx'
+    output_path = path / output_filename
 
     wb = Workbook()
     ws = wb.active
@@ -54,6 +56,8 @@ def main():
         vid_dir_gid = vid_dir.group()
         ws.append(['d', str(dirpath.relative_to(path)), str(dirpath.relative_to(path)), '', '', vid_dir_uid, vid_dir_gid, '', f'{vd_mode:o}'])
         for video_file in video_files:
+            if video_file == output_filename:
+                continue
             vf = dirpath / video_file
             st = vf.stat()
             file_size = st.st_size
@@ -72,7 +76,8 @@ def main():
                     tmp += [track.format, track.channel_s, track.bit_rate, track.sampling_rate, track.language]
             ws.append(tmp)
 
-    wb.save(path / f'{args.name.strip()}.xlsx')
+    print(f"OUTPUT: '{output_path}'")
+    wb.save(output_path)
     return 0
 
 
